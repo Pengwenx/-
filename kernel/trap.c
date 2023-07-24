@@ -67,14 +67,45 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  } else if(r_scause() == 13 || r_scause() == 15){
+    char *mem;
+    uint64 va = r_stval();
+    // 处理 page fault 的虚拟地址超过 p->sz 或低于用户栈的情况,分为超过和小于两种情况
+    if(va >= p->sz)
+    {
+      printf("usertrap(): invalid va=%p higher than p->sz=%p\n", va, p->sz);
+      p->killed = 1;
+      goto end;
+    }
+    if(va < PGROUNDUP(p->trapframe->sp))
+    {
+      printf("usertrap(): invalid va=%p below the user stack sp=%p\n", va, p->trapframe->sp);
+      p->killed = 1;
+      goto end;
+    }
+    // 分配物理页失败
+    if ((mem=kalloc()) == 0)
+    {
+      p->killed = 1;
+      goto end;
+    }
+    memset(mem, 0, PGSIZE);
+    // 进行页表映射以及失败的情况
+    if (mappages(p->pagetable, PGROUNDDOWN(r_stval()), PGSIZE, (uint64)mem, PTE_W | PTE_X | PTE_R | PTE_U) != 0)
+    {
+      kfree(mem);
+      panic("usertrap:mappages");
+      p->killed = 1;
+    }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
   }
 
-  if(p->killed)
-    exit(-1);
+  end:
+    if(p->killed)
+      exit(-1);
 
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2)
