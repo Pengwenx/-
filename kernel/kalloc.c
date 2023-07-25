@@ -65,8 +65,11 @@ freerange(void *pa_start, void *pa_end)
 {
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
-  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
+  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE){
+    // 防止free里边减1，下溢出出错，这里先加1 
+    increfcnt((uint64)p);
     kfree(p);
+  }
 }
 
 // Free the page of physical memory pointed at by v,
