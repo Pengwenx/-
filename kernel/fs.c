@@ -401,6 +401,33 @@ bmap(struct inode *ip, uint bn)
     return addr;
   }
 
+  // 添加对第 NDIRECT 13个块的二级间接索引的处理代码，方法与上文类似，不过要索引两次
+  bn -= NINDIRECT;
+  if(bn < NDOUBLYINDIRECT) {
+    // 获得二级简介索引块的地址
+    if((addr = ip->addrs[NDIRECT + 1]) == 0) {
+      ip->addrs[NDIRECT + 1] = addr = balloc(ip->dev);
+    }
+    bp = bread(ip->dev, addr);
+    a = (uint*)bp->data;
+    // 获得一级简介索引块的地址
+    if((addr = a[bn / NINDIRECT]) == 0) {
+      a[bn / NINDIRECT] = addr = balloc(ip->dev);
+      log_write(bp);
+    }
+    brelse(bp);
+    bp = bread(ip->dev, addr);
+    a = (uint*)bp->data;
+    bn %= NINDIRECT;
+    // 获取直接块的地址
+    if((addr = a[bn]) == 0) {
+      a[bn] = addr = balloc(ip->dev);
+      log_write(bp);
+    }
+    brelse(bp);
+    return addr;
+  }
+
   panic("bmap: out of range");
 }
 
